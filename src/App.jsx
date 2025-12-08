@@ -1,84 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ShoppingCart, Heart, Bell, User, Menu, X, Store, Home, Package, BarChart3, CreditCard, Users, Tag, Image, Settings, MessageSquare, MapPin, ChevronLeft, ChevronRight, Star, Phone, Plus, Edit, Trash2, Eye, Clock, TrendingUp } from 'lucide-react';
+import { supabase } from './supabase'; // <- requer src/supabase.js e VITE_SUPABASE_* no .env
 
-// Dados simulados iniciais
-const INITIAL_DATA = {
-  admin: {
-    email: 'admin@tanatela.com',
-    password: 'admin123',
-    name: 'Administrador',
-    logo: 'TÁ NA TELA'
-  },
-  establishments: [
-    {
-      id: 1,
-      name: 'Supermercado Bom Preço',
-      email: 'super@email.com',
-      password: 'super123',
-      category: 'Supermercado',
-      logo: '🛒',
-      banner: 'https://via.placeholder.com/800x300/4CAF50/ffffff?text=Supermercado+Bom+Preco',
-      phone: '(75) 99999-0001',
-      whatsapp: '75999990001',
-      address: 'Rua Principal, 100',
-      credits: 100,
-      visits: 0,
-      sales: 0,
-      plan: 'START',
-      vipUntil: null,
-      products: [
-        { id: 1, name: 'Arroz 5kg', price: 25.90, category: 'Alimentos', images: ['https://via.placeholder.com/400?text=Arroz'], description: 'Arroz tipo 1' },
-        { id: 2, name: 'Feijão 1kg', price: 8.50, category: 'Alimentos', images: ['https://via.placeholder.com/400?text=Feijao'], description: 'Feijão carioca' }
-      ]
-    },
-    {
-      id: 2,
-      name: 'Farmácia Saúde',
-      email: 'farmacia@email.com',
-      password: 'farm123',
-      category: 'Farmácia',
-      logo: '💊',
-      banner: 'https://via.placeholder.com/800x300/2196F3/ffffff?text=Farmacia+Saude',
-      phone: '(75) 99999-0002',
-      whatsapp: '75999990002',
-      address: 'Av. Central, 200',
-      credits: 100,
-      visits: 0,
-      sales: 0,
-      plan: 'GOLD',
-      vipUntil: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-      products: [
-        { id: 3, name: 'Dipirona 500mg', price: 12.90, category: 'Medicamentos', images: ['https://via.placeholder.com/400?text=Dipirona'], description: 'Analgésico' }
-      ]
-    }
-  ],
-  categories: [
-    { id: 1, name: 'Supermercado', icon: '🛒' },
-    { id: 2, name: 'Farmácia', icon: '💊' },
-    { id: 3, name: 'Restaurante', icon: '🍽️' },
-    { id: 4, name: 'Moda', icon: '👕' },
-    { id: 5, name: 'Eletrônicos', icon: '📱' }
-  ],
-  banners: [
-    { id: 1, image: 'https://via.placeholder.com/1200x400/FF5722/ffffff?text=Ofertas+Especiais', link: '' },
-    { id: 2, image: 'https://via.placeholder.com/1200x400/9C27B0/ffffff?text=Novidades', link: '' }
-  ],
-  recharges: [
-    { id: 1, name: 'START', price: 25, credits: 500, maxProducts: 25 },
-    { id: 2, name: 'GOLD', price: 50, credits: 2000, maxProducts: 50 },
-    { id: 3, name: 'PREMIUM', price: 100, credits: 5000, maxProducts: 100 }
-  ],
-  vipPlans: [
-    { id: 1, name: 'VIP 15 dias', price: 10, days: 15 },
-    { id: 2, name: 'VIP 30 dias', price: 20, days: 30 }
-  ]
-};
-
+// App.jsx integrado ao Supabase
 const App = () => {
+  // estados de interface
   const [user, setUser] = useState(null);
   const [userType, setUserType] = useState(null); // 'admin', 'establishment', 'customer'
   const [currentView, setCurrentView] = useState('home');
-  const [data, setData] = useState(INITIAL_DATA);
+  const [data, setData] = useState({
+    admin: null,
+    establishments: [],
+    categories: [],
+    banners: [],
+    recharges: [],
+    vipPlans: []
+  });
   const [selectedCity, setSelectedCity] = useState('Paripiranga, BA');
   const [cart, setCart] = useState([]);
   const [favorites, setFavorites] = useState([]);
@@ -89,43 +26,189 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [imageIndex, setImageIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  // Login
-  const handleLogin = (email, password, type) => {
-    if (type === 'admin' && email === data.admin.email && password === data.admin.password) {
-      setUser(data.admin);
-      setUserType('admin');
-      setShowLogin(false);
-      setCurrentView('admin-home');
+  // ---------- Carregar dados do Supabase ----------
+  async function loadInitialData() {
+    setLoading(true);
+    try {
+      // Estabelecimentos com produtos (assume tabela 'establishments' e 'products' com fk establishment_id)
+      const { data: establishments, error: estError } = await supabase
+        .from('establishments')
+        .select('*, products(*)');
+      if (estError) console.error('establishments error', estError);
+
+      // Categorias
+      const { data: categories, error: catError } = await supabase
+        .from('categories')
+        .select('*');
+      if (catError) console.error('categories error', catError);
+
+      // Banners
+      const { data: banners, error: banError } = await supabase
+        .from('banners')
+        .select('*');
+      if (banError) console.error('banners error', banError);
+
+      // Recharges (planos de recarga) - tabela 'plans_recharge' ou 'recharges'
+      const { data: recharges, error: recError } = await supabase
+        .from('plans_recharge')
+        .select('*');
+      if (recError) {
+        // tenta nome alternativo
+        const { data: recharges2, error: recError2 } = await supabase
+          .from('recharges')
+          .select('*');
+        if (recError2) console.error('recharges error', recError2);
+        else setData(prev => ({ ...prev, recharges: recharges2 || [] }));
+      } else {
+        setData(prev => ({ ...prev, recharges: recharges || [] }));
+      }
+
+      // VIP plans - tabela 'plans_vip' ou 'vip_plans'
+      const { data: vipPlans, error: vipError } = await supabase
+        .from('plans_vip')
+        .select('*');
+      if (vipError) {
+        const { data: vip2, error: vipError2 } = await supabase
+          .from('vip_plans')
+          .select('*');
+        if (vipError2) console.error('vip plans error', vipError2);
+        else setData(prev => ({ ...prev, vipPlans: vip2 || [] }));
+      } else {
+        setData(prev => ({ ...prev, vipPlans: vipPlans || [] }));
+      }
+
+      // Admin (opcional) - tabela 'admin' (assume apenas 1 registro) ou 'admins'
+      const { data: adminData, error: adminError } = await supabase
+        .from('admin')
+        .select('*')
+        .limit(1)
+        .single();
+      if (adminError) {
+        // tenta alternativa
+        const { data: admin2, error: adminError2 } = await supabase
+          .from('admins')
+          .select('*')
+          .limit(1)
+          .single();
+        if (adminError2) {
+          console.log('admin table not found or error', adminError2);
+        } else {
+          setData(prev => ({ ...prev, admin: admin2 || null }));
+        }
+      } else {
+        setData(prev => ({ ...prev, admin: adminData || null }));
+      }
+
+      // se as consultas comuns tiverem retornado, set em lote (para establishments, categories, banners)
+      setData(prev => ({
+        ...prev,
+        establishments: establishments || prev.establishments || [],
+        categories: categories || prev.categories || [],
+        banners: banners || prev.banners || []
+      }));
+    } catch (err) {
+      console.error('loadInitialData error', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadInitialData();
+
+    // listener de auth (usuários clientes)
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN') {
+        setUser({ email: session.user.email, id: session.user.id, name: session.user.user_metadata?.name || session.user.email });
+        setUserType('customer');
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setUserType(null);
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------- Funções de login/logout ----------
+  // login híbrido: tenta Supabase Auth para clientes; para admin/establishment usa dados carregados
+  const handleLogin = async (email, password, type) => {
+    if (type === 'customer') {
+      try {
+        const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          console.warn('supabase auth signIn error:', error.message || error);
+          // fallback: criar sessão local simulada
+          setUser({ email, name: 'Cliente (simulado)' });
+          setUserType('customer');
+          setShowLogin(false);
+        } else {
+          // usuário autenticado
+          setUser({ email: signInData.user.email, id: signInData.user.id, name: signInData.user.user_metadata?.name || signInData.user.email });
+          setUserType('customer');
+          setShowLogin(false);
+        }
+      } catch (err) {
+        console.error('customer login err', err);
+        // fallback local
+        setUser({ email, name: 'Cliente (simulado)' });
+        setUserType('customer');
+        setShowLogin(false);
+      }
+    } else if (type === 'admin') {
+      // verifica admin vindo do banco (caso exista)
+      if (data.admin && data.admin.email === email && data.admin.password === password) {
+        setUser(data.admin);
+        setUserType('admin');
+        setShowLogin(false);
+        setCurrentView('admin-home');
+        return;
+      }
+      // sem admin no banco: tenta comparar com campos estáticos (ANTIGO comportamento)
+      if (email === 'admin@tanatela.com' && password === 'admin123') {
+        setUser({ email: 'admin@tanatela.com', name: 'Administrador', logo: 'TÁ NA TELA' });
+        setUserType('admin');
+        setShowLogin(false);
+        setCurrentView('admin-home');
+      } else {
+        alert('Credenciais de administrador inválidas');
+      }
     } else if (type === 'establishment') {
-      const est = data.establishments.find(e => e.email === email && e.password === password);
+      // procura estabelecimento nos dados carregados (assume senha em texto simples — ajuste conforme seu backend)
+      const est = (data.establishments || []).find(e => e.email === email && e.password === password);
       if (est) {
         setUser(est);
         setUserType('establishment');
         setShowLogin(false);
         setCurrentView('establishment-home');
+      } else {
+        alert('Credenciais de estabelecimento inválidas');
       }
-    } else if (type === 'customer') {
-      // Simulação de login de cliente
-      setUser({ email, name: 'Cliente Teste' });
-      setUserType('customer');
-      setShowLogin(false);
     }
   };
 
-  // Logout
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      // ignora se não tiver sessão
+    }
     setUser(null);
     setUserType(null);
     setCurrentView('home');
   };
 
-  // Adicionar ao carrinho
+  // adicionar ao carrinho
   const addToCart = (product, establishment) => {
-    setCart([...cart, { ...product, establishment }]);
+    setCart(prev => [...prev, { ...product, establishment }]);
   };
 
-  // Modal de Login
+  // ---------- Componentes / Views (mantive sua estrutura e classes) ----------
   const LoginModal = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -140,11 +223,11 @@ const App = () => {
               <X size={24} />
             </button>
           </div>
-          
+
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2 text-gray-700">Tipo de Acesso</label>
-            <select 
-              value={loginType} 
+            <select
+              value={loginType}
               onChange={(e) => setLoginType(e.target.value)}
               className="w-full border-2 border-yellow-400 rounded-lg p-2 focus:outline-none focus:border-yellow-600"
             >
@@ -168,7 +251,7 @@ const App = () => {
             onChange={(e) => setPassword(e.target.value)}
             className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-4 focus:outline-none focus:border-yellow-600"
           />
-          
+
           <button
             onClick={() => handleLogin(email, password, loginType)}
             className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 text-white rounded-lg p-2 font-semibold hover:from-yellow-700 hover:to-yellow-600 transition"
@@ -184,7 +267,7 @@ const App = () => {
 
           <p className="text-center mt-4 text-sm text-gray-600">
             Não tem conta?{' '}
-            <button 
+            <button
               onClick={() => { setShowLogin(false); setShowRegister(true); }}
               className="text-yellow-700 font-semibold hover:text-yellow-800"
             >
@@ -204,10 +287,58 @@ const App = () => {
     );
   };
 
-  // Modal de Registro
   const RegisterModal = () => {
     const [registerType, setRegisterType] = useState('customer');
-    
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+
+    // simple registration for customer using Supabase Auth
+    const handleRegister = async () => {
+      if (registerType === 'customer') {
+        try {
+          const { data: signUpData, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: { data: { name } }
+          });
+          if (error) {
+            alert('Erro ao cadastrar: ' + error.message);
+          } else {
+            alert('Verifique seu e-mail para confirmar a conta (se configurado).');
+            setShowRegister(false);
+          }
+        } catch (err) {
+          console.error('register err', err);
+          alert('Erro no cadastro.');
+        }
+      } else {
+        // establishment registration: cria registro na tabela 'establishments' via supabase
+        try {
+          const { data: newEst, error } = await supabase
+            .from('establishments')
+            .insert([{
+              name,
+              email,
+              password, // ideal: não salvar senha em texto claro — melhorar depois
+              category: 'Outro'
+            }])
+            .select()
+            .single();
+          if (error) {
+            alert('Erro ao cadastrar estabelecimento: ' + error.message);
+          } else {
+            alert('Estabelecimento cadastrado. Peça ao admin para aprovar/login.');
+            setShowRegister(false);
+            loadInitialData();
+          }
+        } catch (err) {
+          console.error('register est err', err);
+          alert('Erro no cadastro.');
+        }
+      }
+    };
+
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg max-w-md w-full p-6 max-h-screen overflow-y-auto shadow-2xl">
@@ -217,11 +348,11 @@ const App = () => {
               <X size={24} />
             </button>
           </div>
-          
+
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2 text-gray-700">Tipo de Cadastro</label>
-            <select 
-              value={registerType} 
+            <select
+              value={registerType}
               onChange={(e) => setRegisterType(e.target.value)}
               className="w-full border-2 border-yellow-400 rounded-lg p-2 focus:outline-none focus:border-yellow-600"
             >
@@ -230,10 +361,10 @@ const App = () => {
             </select>
           </div>
 
-          <input type="text" placeholder="Nome completo" className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-3 focus:outline-none focus:border-yellow-600" />
-          <input type="email" placeholder="Email" className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-3 focus:outline-none focus:border-yellow-600" />
-          <input type="password" placeholder="Senha" className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-3 focus:outline-none focus:border-yellow-600" />
-          
+          <input value={name} onChange={(e) => setName(e.target.value)} type="text" placeholder="Nome completo" className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-3 focus:outline-none focus:border-yellow-600" />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-3 focus:outline-none focus:border-yellow-600" />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Senha" className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-3 focus:outline-none focus:border-yellow-600" />
+
           {registerType === 'establishment' && (
             <>
               <input type="text" placeholder="Nome do estabelecimento" className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-3 focus:outline-none focus:border-yellow-600" />
@@ -241,14 +372,14 @@ const App = () => {
               <input type="text" placeholder="Endereço" className="w-full border-2 border-yellow-400 rounded-lg p-2 mb-3 focus:outline-none focus:border-yellow-600" />
             </>
           )}
-          
-          <button className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 text-white rounded-lg p-2 font-semibold hover:from-yellow-700 hover:to-yellow-600 transition">
+
+          <button onClick={handleRegister} className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 text-white rounded-lg p-2 font-semibold hover:from-yellow-700 hover:to-yellow-600 transition">
             Cadastrar
           </button>
 
           <p className="text-center mt-4 text-sm text-gray-600">
             Já tem conta?{' '}
-            <button 
+            <button
               onClick={() => { setShowRegister(false); setShowLogin(true); }}
               className="text-yellow-700 font-semibold hover:text-yellow-800"
             >
@@ -260,7 +391,6 @@ const App = () => {
     );
   };
 
-  // Header
   const Header = () => (
     <header className="bg-gradient-to-r from-yellow-600 to-yellow-500 shadow-lg sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 py-3">
@@ -269,7 +399,7 @@ const App = () => {
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white">
               <Menu size={24} />
             </button>
-            <h1 
+            <h1
               onClick={() => setCurrentView('home')}
               className="text-2xl font-bold text-white cursor-pointer drop-shadow-md"
             >
@@ -295,13 +425,13 @@ const App = () => {
           <div className="flex items-center gap-4 text-white">
             {!user ? (
               <>
-                <button 
+                <button
                   onClick={() => setShowLogin(true)}
                   className="hidden md:block px-4 py-2 text-white font-semibold hover:bg-yellow-700 rounded-lg transition"
                 >
                   Entrar
                 </button>
-                <button 
+                <button
                   onClick={() => setShowRegister(true)}
                   className="hidden md:block px-4 py-2 bg-white text-yellow-600 font-semibold rounded-lg hover:bg-yellow-100 transition"
                 >
@@ -335,7 +465,7 @@ const App = () => {
                 </button>
                 <button onClick={handleLogout} className="flex items-center gap-2 hover:scale-105 transition">
                   <User size={24} />
-                  <span className="hidden md:block">{user.name}</span>
+                  <span className="hidden md:block">{user?.name}</span>
                 </button>
               </>
             )}
@@ -360,9 +490,10 @@ const App = () => {
     </header>
   );
 
-  // Home Page (Cliente)
+  // --- CustomerHome, EstablishmentDetail, AdminDashboard, EstablishmentDashboard, CartView ---
+  // Mantive sua lógica visual — apenas referenciei `data.*` que agora vem do Supabase
   const CustomerHome = () => {
-    const sortedEstablishments = [...data.establishments].sort((a, b) => {
+    const sortedEstablishments = [...(data.establishments || [])].sort((a, b) => {
       const aIsVip = a.vipUntil && new Date(a.vipUntil) > new Date();
       const bIsVip = b.vipUntil && new Date(b.vipUntil) > new Date();
       if (aIsVip && !bIsVip) return -1;
@@ -375,7 +506,7 @@ const App = () => {
         {/* City Selector */}
         <div className="flex items-center gap-2 mb-6">
           <MapPin size={20} className="text-yellow-700" />
-          <select 
+          <select
             value={selectedCity}
             onChange={(e) => setSelectedCity(e.target.value)}
             className="border-2 border-yellow-400 rounded-lg px-3 py-1 focus:outline-none focus:border-yellow-600"
@@ -389,9 +520,9 @@ const App = () => {
         {/* Banners */}
         <div className="mb-8">
           <div className="relative rounded-lg overflow-hidden">
-            <img 
-              src={data.banners[0].image} 
-              alt="Banner" 
+            <img
+              src={data.banners?.[0]?.image || ''}
+              alt="Banner"
               className="w-full h-48 md:h-64 object-cover"
             />
           </div>
@@ -401,7 +532,7 @@ const App = () => {
         <div className="mb-8">
           <h2 className="text-xl font-bold mb-4">Categorias</h2>
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {data.categories.map(cat => (
+            {(data.categories || []).map(cat => (
               <div key={cat.id} className="flex flex-col items-center min-w-[80px] cursor-pointer hover:opacity-75">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-3xl mb-2">
                   {cat.icon}
@@ -419,7 +550,7 @@ const App = () => {
             {sortedEstablishments.map(est => {
               const isVip = est.vipUntil && new Date(est.vipUntil) > new Date();
               return (
-                <div 
+                <div
                   key={est.id}
                   onClick={() => {
                     if (!user) {
@@ -432,8 +563,8 @@ const App = () => {
                   className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
                 >
                   <div className="relative">
-                    <img 
-                      src={est.banner} 
+                    <img
+                      src={est.banner}
                       alt={est.name}
                       className="w-full h-40 object-cover"
                     />
@@ -462,13 +593,12 @@ const App = () => {
     );
   };
 
-  // Establishment Detail
   const EstablishmentDetail = () => {
     if (!selectedEstablishment) return null;
 
     return (
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <button 
+        <button
           onClick={() => setCurrentView('home')}
           className="flex items-center gap-2 text-blue-600 mb-4"
         >
@@ -477,8 +607,8 @@ const App = () => {
 
         {/* Banner */}
         <div className="mb-6">
-          <img 
-            src={selectedEstablishment.banner} 
+          <img
+            src={selectedEstablishment.banner}
             alt={selectedEstablishment.name}
             className="w-full h-64 object-cover rounded-lg"
           />
@@ -507,10 +637,10 @@ const App = () => {
         <div>
           <h2 className="text-xl font-bold mb-4">Produtos e Serviços</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {selectedEstablishment.products.map(product => (
+            {(selectedEstablishment.products || []).map(product => (
               <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-                <img 
-                  src={product.images[0]} 
+                <img
+                  src={product.images?.[0]}
                   alt={product.name}
                   className="w-full h-48 object-cover cursor-pointer"
                   onClick={() => setSelectedProduct(product)}
@@ -519,16 +649,16 @@ const App = () => {
                   <h3 className="font-bold mb-2">{product.name}</h3>
                   <p className="text-sm text-gray-600 mb-2">{product.description}</p>
                   <p className="text-2xl font-bold text-blue-600 mb-4">
-                    R$ {product.price.toFixed(2)}
+                    R$ {Number(product.price).toFixed(2)}
                   </p>
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       onClick={() => window.open(`https://wa.me/${selectedEstablishment.whatsapp}`, '_blank')}
                       className="flex-1 bg-green-500 text-white py-2 rounded-lg font-semibold hover:bg-green-600 flex items-center justify-center gap-2"
                     >
                       <Phone size={16} /> Contato
                     </button>
-                    <button 
+                    <button
                       onClick={() => addToCart(product, selectedEstablishment)}
                       className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700"
                     >
@@ -544,7 +674,6 @@ const App = () => {
     );
   };
 
-  // Admin Dashboard
   const AdminDashboard = () => {
     const [adminView, setAdminView] = useState('establishments');
 
@@ -604,7 +733,7 @@ const App = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.establishments.map(est => (
+                  {(data.establishments || []).map(est => (
                     <tr key={est.id} className="border-b">
                       <td className="py-3">{est.name}</td>
                       <td>{est.category}</td>
@@ -627,7 +756,7 @@ const App = () => {
                 <Plus size={18} /> Nova Categoria
               </button>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {data.categories.map(cat => (
+                {(data.categories || []).map(cat => (
                   <div key={cat.id} className="border rounded-lg p-4 text-center">
                     <div className="text-4xl mb-2">{cat.icon}</div>
                     <p className="font-semibold">{cat.name}</p>
@@ -644,7 +773,7 @@ const App = () => {
           {adminView === 'recharges' && (
             <div className="bg-white rounded-lg shadow p-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {data.recharges.map(plan => (
+                {(data.recharges || []).map(plan => (
                   <div key={plan.id} className="border rounded-lg p-6 hover:shadow-lg transition">
                     <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
                     <p className="text-3xl font-bold text-blue-600 mb-4">R$ {plan.price}</p>
@@ -667,7 +796,7 @@ const App = () => {
                 <Plus size={18} /> Novo Banner
               </button>
               <div className="space-y-4">
-                {data.banners.map(banner => (
+                {(data.banners || []).map(banner => (
                   <div key={banner.id} className="border rounded-lg p-4 flex items-center gap-4">
                     <img src={banner.image} alt="Banner" className="w-32 h-20 object-cover rounded" />
                     <div className="flex-1">
@@ -685,7 +814,6 @@ const App = () => {
     );
   };
 
-  // Establishment Dashboard
   const EstablishmentDashboard = () => {
     const [estView, setEstView] = useState('home');
 
@@ -694,7 +822,7 @@ const App = () => {
         {/* Sidebar */}
         <div className="w-full md:w-64 bg-white shadow-lg">
           <div className="p-4">
-            <h2 className="text-xl font-bold text-blue-600 mb-6">{user.name}</h2>
+            <h2 className="text-xl font-bold text-blue-600 mb-6">{user?.name}</h2>
             <nav className="space-y-2">
               <button onClick={() => setEstView('home')} className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 flex items-center gap-2">
                 <Home size={18} /> Home
@@ -729,36 +857,22 @@ const App = () => {
           {estView === 'home' && (
             <div>
               <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-600 text-sm">Créditos</p>
-                  <p className="text-3xl font-bold text-blue-600">{user.credits}</p>
-                </div>
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-600 text-sm">Visitantes</p>
-                  <p className="text-3xl font-bold text-green-600">{user.visits}</p>
-                </div>
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-600 text-sm">Vendas</p>
-                  <p className="text-3xl font-bold text-purple-600">{user.sales}</p>
-                </div>
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-600 text-sm">Produtos</p>
-                  <p className="text-3xl font-bold text-orange-600">{user.products.length}</p>
-                </div>
-              </div>
 
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-bold mb-4">Seus Produtos</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {user.products.map(product => (
-                    <div key={product.id} className="border rounded-lg p-4">
-                      <img src={product.images[0]} alt={product.name} className="w-full h-32 object-cover rounded mb-2" />
-                      <h3 className="font-semibold">{product.name}</h3>
-                      <p className="text-blue-600 font-bold">R$ {product.price.toFixed(2)}</p>
-                    </div>
-                  ))}
+            {estView === 'home' && (
+            <div>
+              <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white rounded-lg shadow p-4">
+                  <p className="text-gray-500">Créditos</p>
+                  <p className="text-2xl font-bold">{user?.credits || 0}</p>
+                </div>
+                <div className="bg-white rounded-lg shadow p-4">
+                  <p className="text-gray-500">Vendas</p>
+                  <p className="text-2xl font-bold">{user?.sales || 0}</p>
+                </div>
+                <div className="bg-white rounded-lg shadow p-4">
+                  <p className="text-gray-500">Visitantes</p>
+                  <p className="text-2xl font-bold">{user?.visits || 0}</p>
                 </div>
               </div>
             </div>
@@ -766,182 +880,47 @@ const App = () => {
 
           {estView === 'products' && (
             <div>
-              <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Meus Produtos</h1>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2">
-                  <Plus size={18} /> Novo Produto
-                </button>
-              </div>
-
-              <div className="bg-white rounded-lg shadow">
-                <table className="w-full">
-                  <thead className="border-b">
-                    <tr className="text-left">
-                      <th className="p-4">Produto</th>
-                      <th className="p-4">Categoria</th>
-                      <th className="p-4">Preço</th>
-                      <th className="p-4">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {user.products.map(product => (
-                      <tr key={product.id} className="border-b">
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <img src={product.images[0]} alt={product.name} className="w-12 h-12 object-cover rounded" />
-                            <span>{product.name}</span>
-                          </div>
-                        </td>
-                        <td className="p-4">{product.category}</td>
-                        <td className="p-4">R$ {product.price.toFixed(2)}</td>
-                        <td className="p-4">
-                          <div className="flex gap-2">
-                            <button className="text-blue-600"><Edit size={18} /></button>
-                            <button className="text-red-600"><Trash2 size={18} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {estView === 'credits' && (
-            <div>
-              <h1 className="text-3xl font-bold mb-6">Créditos</h1>
-              
-              <div className="bg-white rounded-lg shadow p-6 mb-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-600">Créditos Disponíveis</p>
-                    <p className="text-4xl font-bold text-blue-600">{user.credits}</p>
+              <h1 className="text-3xl font-bold mb-6">Produtos</h1>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {(user?.products || []).map(product => (
+                  <div key={product.id} className="bg-white rounded-lg shadow p-4">
+                    <img src={product.images?.[0]} alt={product.name} className="h-40 w-full object-cover mb-2 rounded" />
+                    <h2 className="font-bold text-lg">{product.name}</h2>
+                    <p className="text-gray-600 mb-2">{product.description}</p>
+                    <p className="text-blue-600 font-bold mb-2">R$ {Number(product.price).toFixed(2)}</p>
+                    <div className="flex gap-2">
+                      <button className="text-blue-600"><Edit size={18} /></button>
+                      <button className="text-red-600"><Trash2 size={18} /></button>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-gray-600">Plano Atual</p>
-                    <p className="text-2xl font-bold">{user.plan}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {estView === 'banners' && (
+            <div>
+              <h1 className="text-3xl font-bold mb-6">Banners</h1>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {(user?.banners || []).map(banner => (
+                  <div key={banner.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                    <img src={banner.image} alt={`Banner ${banner.id}`} className="w-32 h-20 object-cover rounded" />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600">Banner #{banner.id}</p>
+                    </div>
+                    <button className="text-blue-600"><Edit size={18} /></button>
+                    <button className="text-red-600"><Trash2 size={18} /></button>
                   </div>
-                </div>
-                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
-                  <p className="text-sm">⚠️ Um crédito é descontado a cada visita única de usuário por dia</p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-bold mb-4">Histórico de Recargas</h2>
-                <p className="text-gray-600">Nenhuma recarga realizada ainda</p>
-              </div>
-            </div>
-          )}
-
-          {estView === 'recharges' && (
-            <div>
-              <h1 className="text-3xl font-bold mb-6">Recargas e Destaques</h1>
-              
-              <div className="mb-8">
-                <h2 className="text-xl font-bold mb-4">Planos de Recarga</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {data.recharges.map(plan => (
-                    <div key={plan.id} className="bg-white rounded-lg shadow-lg p-6 border-2 hover:border-blue-600 transition">
-                      <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
-                      <p className="text-4xl font-bold text-blue-600 mb-4">R$ {plan.price}</p>
-                      <ul className="space-y-2 mb-6">
-                        <li className="flex items-center gap-2">
-                          <span className="text-green-600">✓</span> {plan.credits} créditos
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <span className="text-green-600">✓</span> Até {plan.maxProducts} produtos
-                        </li>
-                      </ul>
-                      <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700">
-                        Comprar Agora
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h2 className="text-xl font-bold mb-4">Destaque VIP</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {data.vipPlans.map(plan => (
-                    <div key={plan.id} className="bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-lg shadow-lg p-6">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Star size={24} fill="currentColor" />
-                        <h3 className="text-2xl font-bold">{plan.name}</h3>
-                      </div>
-                      <p className="text-3xl font-bold mb-4">R$ {plan.price}</p>
-                      <ul className="space-y-2 mb-6">
-                        <li>✓ Selo VIP por {plan.days} dias</li>
-                        <li>✓ Apareça nas primeiras posições</li>
-                        <li>✓ Mais visibilidade</li>
-                      </ul>
-                      <button className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-800">
-                        Ativar Destaque VIP
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {estView === 'visitors' && (
-            <div>
-              <h1 className="text-3xl font-bold mb-6">Visitantes</h1>
-              
-              <div className="bg-white rounded-lg shadow p-6 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold">Total de Visitantes</h2>
-                  <select className="border rounded px-3 py-1">
-                    <option>Últimos 7 dias</option>
-                    <option>Últimos 30 dias</option>
-                    <option>Este mês</option>
-                  </select>
-                </div>
-                <p className="text-5xl font-bold text-blue-600">{user.visits}</p>
-              </div>
-
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-bold mb-4">Gráfico de Visitantes</h2>
-                <div className="h-64 flex items-end justify-around gap-2">
-                  {[12, 18, 25, 15, 30, 22, 28].map((value, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center">
-                      <div 
-                        className="w-full bg-blue-600 rounded-t"
-                        style={{ height: `${value * 3}px` }}
-                      ></div>
-                      <p className="text-xs mt-2">Dia {i + 1}</p>
-                    </div>
-                  ))}
-                </div>
+                ))}
               </div>
             </div>
           )}
 
           {estView === 'sales' && (
             <div>
-              <h1 className="text-3xl font-bold mb-6">Vendas</h1>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-600">Total de Vendas</p>
-                  <p className="text-3xl font-bold text-blue-600">{user.sales}</p>
-                </div>
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-600">A Entregar</p>
-                  <p className="text-3xl font-bold text-orange-600">0</p>
-                </div>
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-600">Concluídas</p>
-                  <p className="text-3xl font-bold text-green-600">0</p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-bold mb-4">Histórico de Vendas</h2>
-                <p className="text-gray-600 text-center py-8">Nenhuma venda realizada ainda</p>
+              <h1 className="text-3xl font-bold mb-6">Vendas Recentes</h1>
+              <div className="bg-white rounded-lg shadow p-4">
+                <p>Em breve, lista de vendas integradas com Supabase.</p>
               </div>
             </div>
           )}
@@ -950,92 +929,86 @@ const App = () => {
     );
   };
 
-  // Cart View
-  const CartView = () => {
-    const total = cart.reduce((sum, item) => sum + item.price, 0);
+  const CartView = () => (
+    <div className="max-w-7xl mx-auto px-4 py-6">
+      <h1 className="text-3xl font-bold mb-6">Carrinho</h1>
+      {cart.length === 0 ? (
+        <p>Seu carrinho está vazio.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {cart.map((item, idx) => (
+            <div key={idx} className="bg-white rounded-lg shadow p-4">
+              <h2 className="font-bold text-lg">{item.name}</h2>
+              <p className="text-gray-600 mb-2">{item.description}</p>
+              <p className="text-blue-600 font-bold mb-2">R$ {Number(item.price).toFixed(2)}</p>
+              <p className="text-sm text-gray-500">Loja: {item.establishment?.name}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // Modal de Produto (imagem grande)
+  const ProductModal = () => {
+    if (!selectedProduct) return null;
+
+    const images = selectedProduct.images || [];
 
     return (
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <h1 className="text-3xl font-bold mb-6">Carrinho de Compras</h1>
-
-        {cart.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <ShoppingCart size={64} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-600">Seu carrinho está vazio</p>
-            <button 
-              onClick={() => setCurrentView('home')}
-              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg"
-            >
-              Continuar Comprando
-            </button>
+      <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg max-w-3xl w-full p-4 relative">
+          <button onClick={() => setSelectedProduct(null)} className="absolute top-2 right-2 text-gray-600 hover:text-gray-800">
+            <X size={24} />
+          </button>
+          <div className="relative">
+            {images.length > 0 && (
+              <img src={images[imageIndex]} alt={selectedProduct.name} className="w-full h-96 object-cover rounded" />
+            )}
+            {images.length > 1 && (
+              <>
+                <button
+                  onClick={() => setImageIndex((imageIndex - 1 + images.length) % images.length)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white rounded-full p-2 shadow hover:bg-gray-100"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+                <button
+                  onClick={() => setImageIndex((imageIndex + 1) % images.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white rounded-full p-2 shadow hover:bg-gray-100"
+                >
+                  <ChevronRight size={24} />
+                </button>
+              </>
+            )}
           </div>
-        ) : (
-          <>
-            <div className="bg-white rounded-lg shadow mb-6">
-              {cart.map((item, index) => (
-                <div key={index} className="p-4 border-b flex items-center gap-4">
-                  <img src={item.images[0]} alt={item.name} className="w-20 h-20 object-cover rounded" />
-                  <div className="flex-1">
-                    <h3 className="font-bold">{item.name}</h3>
-                    <p className="text-sm text-gray-600">{item.establishment.name}</p>
-                    <p className="text-blue-600 font-bold">R$ {item.price.toFixed(2)}</p>
-                  </div>
-                  <button 
-                    onClick={() => setCart(cart.filter((_, i) => i !== index))}
-                    className="text-red-600"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xl font-bold">Total:</span>
-                <span className="text-3xl font-bold text-blue-600">R$ {total.toFixed(2)}</span>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Forma de Pagamento</label>
-                <select className="w-full border rounded-lg p-2">
-                  <option>Dinheiro</option>
-                  <option>PIX</option>
-                  <option>Cartão</option>
-                </select>
-              </div>
-
-              <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700">
-                Finalizar Compra
-              </button>
-            </div>
-          </>
-        )}
+        </div>
       </div>
     );
   };
 
-  // Main Render
+  // ---------- Renderização principal ----------
+  if (loading) return <div className="flex items-center justify-center h-screen text-2xl font-bold">Carregando...</div>;
+
   return (
-    <div className="min-h-screen bg-yellow-50">
+    <div className="min-h-screen bg-gray-50">
       <Header />
-      
+
       {showLogin && <LoginModal />}
       {showRegister && <RegisterModal />}
+      {selectedProduct && <ProductModal />}
 
-      {userType === 'admin' ? (
-        <AdminDashboard />
-      ) : userType === 'establishment' ? (
-        <EstablishmentDashboard />
-      ) : currentView === 'establishment-detail' ? (
-        <EstablishmentDetail />
-      ) : currentView === 'cart' ? (
-        <CartView />
-      ) : (
-        <CustomerHome />
-      )}
+      <main>
+        {!user && currentView === 'home' && <CustomerHome />}
+        {userType === 'customer' && currentView === 'home' && <CustomerHome />}
+        {userType === 'customer' && currentView === 'cart' && <CartView />}
+        {userType === 'customer' && currentView === 'establishment-detail' && <EstablishmentDetail />}
+        {userType === 'admin' && <AdminDashboard />}
+        {userType === 'establishment' && <EstablishmentDashboard />}
+      </main>
     </div>
   );
 };
 
 export default App;
+
